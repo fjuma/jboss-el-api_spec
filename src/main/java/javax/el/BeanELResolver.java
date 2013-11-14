@@ -619,30 +619,8 @@ public class BeanELResolver extends ELResolver {
         if (Modifier.isPublic (cl.getModifiers ())) {
             return method;
         }
-        Class [] interfaces = cl.getInterfaces ();
-        for (int i = 0; i < interfaces.length; i++) {
-            Class c = interfaces[i];
-            Method m = null;
-            try {
-                m = c.getMethod(method.getName(), method.getParameterTypes());
-                c = m.getDeclaringClass();
-                if ((m = getMethod(c, m)) != null)
-                    return m;
-            } catch (NoSuchMethodException ex) {
-            }
-        }
-        Class c = cl.getSuperclass();
-        if (c != null) {
-            Method m = null;
-            try {
-                m = c.getMethod(method.getName(), method.getParameterTypes());
-                c = m.getDeclaringClass();
-                if ((m = getMethod(c, m)) != null)
-                    return m;
-            } catch (NoSuchMethodException ex) {
-            }
-        }
-        return null;
+
+        return getMethodFromInterfaceOrSuperclass(cl, method);
     }
 
     private BeanProperty getBeanProperty(ELContext context,
@@ -732,12 +710,53 @@ public class BeanELResolver extends ELResolver {
             }
         }
         try {
+            // If m is a public method in a non-public class that implements a public interface
+            // or has a public superclass, suppress Java access checking to work around JDK-4071957
+            if ((!Modifier.isPublic(m.getDeclaringClass().getModifiers())) &&
+                    Modifier.isPublic(m.getModifiers()) &&
+                    (getMethodFromInterfaceOrSuperclass(m.getDeclaringClass(), m) != null)) {
+                m.setAccessible(true);
+            }
             return m.invoke(base, parameters);
         } catch (IllegalAccessException iae) {
             throw new ELException(iae);
         } catch (InvocationTargetException ite) {
             throw new ELException(ite.getCause());
         }
+    }
+
+    /*
+     * Get a version of the given method from a public interface or superclass.
+     */
+    static private Method getMethodFromInterfaceOrSuperclass(Class cl, Method method) {
+        if (method == null) {
+            return null;
+        }
+
+        Class [] interfaces = cl.getInterfaces ();
+        for (int i = 0; i < interfaces.length; i++) {
+            Class c = interfaces[i];
+            Method m = null;
+            try {
+                m = c.getMethod(method.getName(), method.getParameterTypes());
+                c = m.getDeclaringClass();
+                if ((m = getMethod(c, m)) != null)
+                    return m;
+            } catch (NoSuchMethodException ex) {
+            }
+        }
+        Class c = cl.getSuperclass();
+        if (c != null) {
+            Method m = null;
+            try {
+                m = c.getMethod(method.getName(), method.getParameterTypes());
+                c = m.getDeclaringClass();
+                if ((m = getMethod(c, m)) != null)
+                    return m;
+            } catch (NoSuchMethodException ex) {
+            }
+        }
+        return null;
     }
 }
 
